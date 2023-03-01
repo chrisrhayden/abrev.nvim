@@ -210,7 +210,7 @@ local function mk_abbreviations(to_make)
         "abbreviations needs a lhs and rhs and should both be strings")
 
     local lhs_part = parse_str(to_make[1])
-    local rhs_part = parse_str(to_make[3])
+    local rhs_part = parse_str(to_make[2])
 
     local variants = mk_variants(lhs_part, rhs_part)
 
