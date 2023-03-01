@@ -1,8 +1,28 @@
+---this largely works because we add the individual parts in order as they
+---appear to the parts table then always iterate in order adding every variant
+---to a list in that order
+---
+---there is no way to associate correct variants out of
+---order so this works fine
+
+function dump(o)
+    if type(o) == 'table' then
+        local s = '{ '
+        for k, v in pairs(o) do
+            if type(k) ~= 'number' then k = '"' .. k .. '"' end
+            s = s .. '[' .. k .. '] = ' .. dump(v) .. ','
+        end
+        return s .. '} '
+    else
+        return tostring(o)
+    end
+end
+
 local M = {}
 
+--TODO: add comments to pattern
+--
 ---parse a string in to parts to process in to variants
----
----TODO: add comments to pattern
 ---
 ---@param str string a string to make in to a parts table
 ---@return table tmp a table containing the parts of a word
@@ -17,14 +37,15 @@ local function parse_str(str)
         local start_idx, end_idx = part:find("{.-}")
 
         -- if `start_idx` is 0 or nil then add it to the part table
-        -- as its either just a full string or the remaninder
+        -- as its either just a full string or the remainder
         -- after the last pattern
         if not start_idx then
             table.insert(tbl, part)
             break
         end
 
-        -- if `start_idx` is greter then one there is some text befor the pattern
+        -- if `start_idx` is grater then one there is some text
+        -- before the pattern
         if start_idx > 1 then
             local first = part:sub(0, start_idx - 1)
             table.insert(tbl, first)
@@ -66,7 +87,7 @@ local function add_value(tbl, to_add)
                 table.insert(tmp, v)
             end
         end
-        -- concat elemnts in `tbl` with `to_add` in to `tmp`
+        -- concat elements in `tbl` with `to_add` in to `tmp`
     else
         if type(to_add) == "string" then
             for _, item in ipairs(tbl) do
@@ -88,13 +109,19 @@ end
 ---
 ---@param tbl table the values to dupe
 ---@param count number about of time the values should be duped
----@return tmp table the new values
+---@return table tmp the new values
 local function dup_values(tbl, count)
     local tmp = {}
 
-    for _, item in ipairs(tbl) do
+    if not next(tbl) then
         for _ = 1, count do
-            table.insert(tmp, item)
+            table.insert(tmp, "")
+        end
+    else
+        for _, item in ipairs(tbl) do
+            for _ = 1, count do
+                table.insert(tmp, item)
+            end
         end
     end
 
@@ -102,11 +129,6 @@ local function dup_values(tbl, count)
 end
 
 ---make the variants from the given parts
----
----this largely works becuse we add the individule parts in order as they apper
----to the parts table then always iterate in order adding every varint to a list
----in that order
----there is no way to assosiate correct variants out of order so this works fine
 ---
 ---@param lhs table the left hand side parts
 ---@param rhs table the right hand side parts
@@ -116,49 +138,45 @@ local function mk_variants(lhs, rhs)
 
     local tmp = { lhs = {}, rhs = {} }
 
-    if #rhs == 1 then
+    if #rhs == 1 and type(rhs[1]) == "string" then
         table.insert(tmp.rhs, rhs[1])
     end
 
-    -- this alows lhs and rhs to iterate at diffrent indexs
+    -- this allows lhs and rhs to iterate at different indices
     local rhs_idx = 1
 
-    local lhs_idx = 1
     for i = 1, #lhs do
         local l = lhs[i]
 
         tmp.lhs = add_value(tmp.lhs, l)
 
-        -- if rhs is grater then one elemnt create variants
-        if #rhs ~= 1 then
+        if #rhs ~= 1 or type(rhs[1]) ~= "string" then
             local r = rhs[rhs_idx]
 
             if type(r) == "table" then
-                assert(type(l) == "table",
-                    "rhs variants should correspond to lhs variants")
+                -- if lhs is not a table then skip to the next iteration
+                if type(l) == "table" then
+                    -- rhs is empty or only has an empty string then
+                    -- use the left hand side for variants
+                    if not next(r) or (#r == 1 and r[1] == "") then
+                        tmp.rhs = add_value(tmp.rhs, l)
+                    else
+                        tmp.rhs = add_value(tmp.rhs, r)
+                    end
 
-                -- rhs is empty or only has an empty string then
-                -- use the left hand side for variants
-                if not next(r) or (#r == 1 and r[1] == "") then
-                    tmp.rhs = add_value(tmp.rhs, l)
-                else
-                    tmp.rhs = add_value(tmp.rhs, r)
+                    rhs_idx = rhs_idx + 1
                 end
 
-                rhs_idx = rhs_idx + 1
-
-                -- TODO: imporove this comment
+                -- TODO: improve this comment
                 -- if rhs is not a table and lhs is then we are
                 -- adding variants to lhs that should not be added to rhs
             elseif type(l) == "table" then
                 tmp.rhs = dup_values(tmp.rhs, #l)
-            else
+            elseif r then
                 tmp.rhs = add_value(tmp.rhs, r)
                 rhs_idx = rhs_idx + 1
             end
         end
-
-        lhs_idx = lhs_idx + 1
     end
 
     return tmp
@@ -205,12 +223,15 @@ end
 ---@param to_make table a table containing the lhs and rhs string to make in to abbreviations
 ---@return table alternatives abbreviations to be used with vim.cmd("abbreviate "..)
 local function mk_abbreviations(to_make)
-    assert((to_make[1] and type(to_make[1]) == "string")
-    and (to_make[2] and type(to_make[2]) == "string"),
-        "abbreviations needs a lhs and rhs and should both be strings")
+    assert(
+        (to_make[1] and type(to_make[1]) == "string")
+        and (to_make[2] and type(to_make[2]) == "string"),
+        "abbreviations needs a lhs and rhs and should both be strings"
+    )
 
     local lhs_part = parse_str(to_make[1])
     local rhs_part = parse_str(to_make[2])
+
 
     local variants = mk_variants(lhs_part, rhs_part)
 
